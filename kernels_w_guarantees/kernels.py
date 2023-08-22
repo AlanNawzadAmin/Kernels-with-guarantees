@@ -38,7 +38,7 @@ def map_in_batch(f, x, batch_size, axis_keep):
 def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
                    alphabet_size, flank_penalty=True, local_alignment=True,
                    w_stop=False, max_len=10,
-                   batch_size=150, normalize=False, sub_beta=1):
+                   batch_size=150, normalize=False, sub_beta=1, dtype=np.float32):
     """ Create an alignment kernel.
     
     Parameters:
@@ -83,7 +83,7 @@ def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
 
     # Initialize phmms for each length with dummy latent sequences
     arranger = Profile(max_len)
-    phmms = [local_ali_phmm(torch.tensor(np.tile(np.eye(alphabet_size+1)[[-1]], (i+1, 1))),
+    phmms = [local_ali_phmm(torch.tensor(np.tile(np.eye(alphabet_size+1, dtype=dtype)[[-1]], (i+1, 1))),
                             sub_mat, open_gap_score, extend_gap_score,
                             local_alignment=local_alignment,
                             flank_penalty=flank_penalty, arranger=arranger)
