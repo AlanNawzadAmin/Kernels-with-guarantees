@@ -38,7 +38,7 @@ def map_in_batch(f, x, batch_size, axis_keep):
 def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
                    alphabet_size, flank_penalty=True, local_alignment=True,
                    no_diag=True, w_stop=False, max_len=10,
-                   batch_size=150, normalize=False):
+                   batch_size=150, normalize=False, sub_beta=1):
     """ Create an alignment kernel.
     
     Parameters:
@@ -64,6 +64,8 @@ def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
         Maximum length of sequence (including stop) accepted by kernel.
     batch_size: int, default = 150
         Number of sequences compared at once during calculations.
+    sub_beta: float, default = 1
+        Score for matching letters if sub_mat is not given.
     
     Returns:
     kern_func: function
