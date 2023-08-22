@@ -38,7 +38,7 @@ def map_in_batch(f, x, batch_size, axis_keep):
 def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
                    alphabet_size, flank_penalty=True, local_alignment=True,
                    w_stop=False, max_len=10,
-                   batch_size=150, normalize=False, sub_beta=1, dtype=np.float32):
+                   batch_size=150, normalize=False, sub_beta=1, dtype=np.float64):
     """ Create an alignment kernel.
     
     Parameters:
@@ -104,7 +104,7 @@ def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
             if w_stop:
                 seqs2 = torch.tensor(seqs2_w_stop)
             else:
-                seqs2 = add_stops(seqs2_w_stop)
+                seqs2 = add_stops(seqs2_w_stop, dtype=dtype)
 
         shape1 = seqs1.shape[:-2]
         shape2 = seqs2.shape[:-2]
