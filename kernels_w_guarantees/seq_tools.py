@@ -136,7 +136,7 @@ def get_lens(seqs_ohe):
 ################ Reformat axes of sequence representations #############
 
 
-def add_stops(seqs):
+def add_stops(seqs, dtype=np.float64):
     """ Returns seqs with an extra index in the last dimension with 
     the stop symbol (only one stop is added - stop is not filled).
     An extra index in the length axis is also added, in case a sequence
@@ -151,7 +151,7 @@ def add_stops(seqs):
     """
     ohe_len = np.shape(seqs)[-2]
     seq_lens = get_lens(seqs)
-    stops = (seq_lens[..., None] == np.arange(ohe_len + 1)).astype(float)
+    stops = (seq_lens[..., None] == np.arange(ohe_len + 1)).astype(dtype)
     stops[np.isnan(seq_lens), :] = np.nan
     seqs_w_stop = np.concatenate(
         [set_ohe_pad(seqs, 1, False), stops[..., None]], axis=-1)
