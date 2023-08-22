@@ -258,7 +258,7 @@ def local_ali_phmm(seqs, sub_mat, insert_int, insert_slope, arranger=None,
         Arranger to use for defining the pHMM.
     flank_penalty: bool, default = True
         Whether to apply any gap penalty to gaps at ends. Has no effect if
-        no_affine_gap_penalty.
+        local_alignment.
     local_alignment: bool, default = True
         If True, gaps at ends are penalized with the extension score only.
     normalize: bool, default = False
