@@ -94,7 +94,7 @@ def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
         if w_stop:
             seqs1 = torch.tensor(seqs1_w_stop)
         else:
-            seqs1 = add_stops(seqs1_w_stop)
+            seqs1 = add_stops(seqs1_w_stop, dtype=dtype)
         if seqs2_w_stop is None:
             two_is_one = True
             seqs2_w_stop = seqs1_w_stop

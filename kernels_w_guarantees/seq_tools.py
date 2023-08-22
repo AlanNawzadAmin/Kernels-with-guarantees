@@ -154,7 +154,7 @@ def add_stops(seqs, dtype=np.float64):
     stops = (seq_lens[..., None] == np.arange(ohe_len + 1)).astype(dtype)
     stops[np.isnan(seq_lens), :] = np.nan
     seqs_w_stop = np.concatenate(
-        [set_ohe_pad(seqs, 1, False), stops[..., None]], axis=-1)
+        [set_ohe_pad(seqs, 1, False), stops[..., None]], axis=-1).astype(dtype)
     return torch.tensor(seqs_w_stop)
 
 
