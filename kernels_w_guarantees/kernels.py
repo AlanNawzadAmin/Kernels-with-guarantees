@@ -35,15 +35,15 @@ def map_in_batch(f, x, batch_size, axis_keep):
 ############ Alignment kernel ##################
 
 
-def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
+def get_ali_kernel(log_sub_mat, open_gap_score, extend_gap_score,
                    alphabet_size, flank_penalty=True, local_alignment=True,
                    w_stop=False, max_len=10,
                    batch_size=150, normalize=False, sub_beta=1, dtype=np.float64):
     """ Create an alignment kernel.
     
     Parameters:
-    sub_mat: float
-        substitution matrix
+    log_sub_mat: float
+        log substitution matrix
     open_gap_score: float
         - mu
     extend_gap_score: float
@@ -65,7 +65,7 @@ def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
     normalize: bool, default = False
         If True, normalize kernel.
     sub_beta: float, default = 1
-        Score for matching letters if sub_mat is not given.
+        Score for matching letters if log_sub_mat is not given.
     
     Returns:
     kern_func: function
@@ -77,13 +77,13 @@ def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
     """
     
     # Set up substitution matrix
-    if sub_mat is None:
-        sub_mat = sub_beta * torch.eye(alphabet_size, dtype=torch.float64)
-    log_sub_mat = torch.nan_to_num(torch.log(sub_mat))
+    if log_sub_mat is None:
+        log_sub_mat = torch.from_numpy(np.log(sub_beta * np.eye(alphabet_size).astype(dtype)))
+    log_sub_mat = torch.nan_to_num(log_sub_mat)
 
     # Initialize phmms for each length with dummy latent sequences
     arranger = Profile(max_len)
-    phmms = [local_ali_phmm(torch.tensor(np.tile(np.eye(alphabet_size+1, dtype=dtype)[[-1]], (i+1, 1))),
+    phmms = [local_ali_phmm(torch.tensor(np.tile(np.eye(alphabet_size+1).astype(dtype)[[-1]], (i+1, 1))),
                             log_sub_mat, open_gap_score, extend_gap_score,
                             local_alignment=local_alignment,
                             flank_penalty=flank_penalty, arranger=arranger, dtype=dtype)
