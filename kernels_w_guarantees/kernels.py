@@ -79,14 +79,14 @@ def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
     # Set up substitution matrix
     if sub_mat is None:
         sub_mat = sub_beta * torch.eye(alphabet_size, dtype=torch.float64)
-    sub_mat = torch.nan_to_num(torch.log(sub_mat), neginf=-1e32)
+    log_sub_mat = torch.nan_to_num(torch.log(sub_mat))
 
     # Initialize phmms for each length with dummy latent sequences
     arranger = Profile(max_len)
     phmms = [local_ali_phmm(torch.tensor(np.tile(np.eye(alphabet_size+1, dtype=dtype)[[-1]], (i+1, 1))),
-                            sub_mat, open_gap_score, extend_gap_score,
+                            log_sub_mat, open_gap_score, extend_gap_score,
                             local_alignment=local_alignment,
-                            flank_penalty=flank_penalty, arranger=arranger)
+                            flank_penalty=flank_penalty, arranger=arranger, dtype=dtype)
              for i in range(max_len)]
 
     def kern_func(seqs1_w_stop, seqs2_w_stop=None):
@@ -123,14 +123,15 @@ def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
             else:
                 # Set up PHMM.
                 seq1_hmm = phmms[int(torch.sum(seq1))-1]
-                seq1_hmm.observation_logits = observation_logits(seq1, sub_mat)[-1]
+                seq1_hmm.observation_logits = observation_logits(seq1, log_sub_mat, dtype=dtype)[-1]
                 # Set up query sequences and get liks.
                 if not two_is_one:
                     seqs_b = seqs2
                     liks = map_in_batch(lambda seqs: seq1_hmm.log_prob(seqs).cpu().numpy(),
                                         seqs2, batch_size, 2)
                     ker_mat[i] = liks
-                    log_diag_x[i] = seq1_hmm.log_prob(seq1).cpu().numpy()
+                    if normalize:
+                        log_diag_x[i] = seq1_hmm.log_prob(seq1).cpu().numpy()
                 else:
                     # Compare seq i with averything after i.
                     seqs_b = seqs2[i:]
@@ -138,8 +139,9 @@ def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
                                         seqs2[i:], batch_size, 2)
                     ker_mat[i, i:] = liks
                     ker_mat[i:, i] = ker_mat[i, i:]
-                    log_diag_x[i] = liks[0]
-                    log_diag_y[i] = log_diag_x[i]
+                    if normalize:
+                        log_diag_x[i] = liks[0]
+                        log_diag_y[i] = log_diag_x[i]
 
         # Get log_diag_y if seqs2 is not seqs1.
         if not two_is_one and normalize:
@@ -149,7 +151,7 @@ def get_ali_kernel(sub_mat, open_gap_score, extend_gap_score,
                 else:
                     # set up phmm
                     seq2_hmm = phmms[int(torch.sum(seq2))-1]
-                    seq2_hmm.observation_logits = observation_logits(seq2, sub_mat)[-1]
+                    seq2_hmm.observation_logits = observation_logits(seq2, log_sub_mat, dtype=dtype)[-1]
                     # get diag lik
                     log_diag_y[i] = seq2_hmm.log_prob(seq2).cpu().numpy()
         

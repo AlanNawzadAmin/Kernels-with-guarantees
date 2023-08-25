@@ -15,8 +15,7 @@ https://github.com/pyro-ppl/pyro/tree/dev/pyro/contrib/mue
 used under the MIT lisence.
 """
 
-epsilon = 1e-7
-inf = 1e32
+epsilon = 1e-16
 # MAX_LEN = 200
 # STATE_ARRANGER = Profile(MAX_LEN)
 
@@ -44,11 +43,12 @@ class ProfileHMM(nn.Module):
     :param arranger: Give a state arranger to avoid redefining one.
     :param bool stop: Include explicit stop letter.
     :param bool cuda: Transfer data onto the GPU during training.
+    :param dtype dtype
     """
     def __init__(self, latent_seq_length, alphabet_length,
                  prior_scale=1., indel_prior_bias=10., stop_prior_bias=1.,
                  stop_prior_late=1., arranger=None,
-                 stop=True, cuda=False):
+                 stop=True, cuda=False, dtype=np.float64):
         super().__init__()
         assert isinstance(cuda, bool)
         self.is_cuda = cuda
@@ -130,7 +130,7 @@ class ProfileHMM(nn.Module):
             self.observation_logits = self.observation_logits[keep_inds]
 
         if self.inc_stop:
-            ninf = -1e7 * torch.ones(1)
+            ninf = torch.nan_to_num(torch.tensor(dtype('-inf')))
             # Impossible to immediately stop
             self.initial_logits = torch.cat([self.initial_logits, ninf])
 
@@ -161,7 +161,7 @@ class ProfileHMM(nn.Module):
                                       self.observation_logits)
 
 
-def observation_logits(seqs, sub_mat, normalize=False):
+def observation_logits(seqs, sub_mat, normalize=False, dtype=np.float64):
     """ Get a torch tensor of observation logits from sequences.
     All sequences must be of the same length and include a single stop!
     Throws an error if sequences are not of same length.
@@ -190,13 +190,14 @@ def observation_logits(seqs, sub_mat, normalize=False):
     len_seq = len_seq.flatten()[0]
     alphabet_size = int(seqs.shape[-1]) - 1
     # extend sub mat so stop always goes to stop
-    sub_mat_stop = - inf * (1 - torch.eye(alphabet_size + 1))
+    ninf = torch.nan_to_num(torch.tensor(dtype('-inf')))
+    sub_mat_stop = ninf * (1 - torch.eye(alphabet_size + 1))
     sub_mat_stop[:alphabet_size, :alphabet_size] = sub_mat
     mut_seqs = torch.matmul(seqs[..., :len_seq, :], sub_mat_stop)
 
     # add logits for insertions
     ins_logits = torch.zeros(list(mut_seqs.shape[:-2]) + [len_seq+1, alphabet_size+1])
-    ins_logits[..., -1] = - inf
+    ins_logits[..., -1] = ninf
     observation_logits = torch.cat([mut_seqs, ins_logits], axis=-2)
     if normalize:
         observation_logits = (observation_logits
@@ -237,7 +238,8 @@ def model_expand_to_obs(model, obs_logits):
 
 
 def local_ali_phmm(seqs, sub_mat, insert_int, insert_slope, arranger=None,
-                   flank_penalty=True, local_alignment=True, normalize=False):
+                   flank_penalty=True, local_alignment=True, normalize=False,
+                   dtype=np.float64):
     """ Builds a local alignment PHMM pyro distribution with seqs as latent
     sequences. This PHMM has insertions and deletions appear simultaneously:
     deletions cannot land on insertions, so it may be use to build an alignment
@@ -264,17 +266,19 @@ def local_ali_phmm(seqs, sub_mat, insert_int, insert_slope, arranger=None,
     normalize: bool, default = False
         Get actual probability distribution, i.e. normalize transition
         and observation probabilities.
+    dtype: dtype, default np.float64
         
     Returns:
     model: MissingDataDiscreteHMM
     """
+    ninf = torch.nan_to_num(torch.tensor(dtype('-inf')))
     if local_alignment and not flank_penalty:
         logging.warning("flank_penalty == False ignored "
                         + "as local_alignment == True")
-    len_seq, alphabet_size, obs_logits = observation_logits(seqs, sub_mat)
+    len_seq, alphabet_size, obs_logits = observation_logits(seqs, sub_mat, dtype=dtype)
     
     # no penalty for deletions (counting all local alis)
-    hmm = ProfileHMM(len_seq, alphabet_size+1, stop=False, cuda=True, arranger=arranger)
+    hmm = ProfileHMM(len_seq, alphabet_size+1, stop=False, cuda=True, arranger=arranger, dtype=dtype)
     # Set indel penalties
     delete_int = insert_int
     delete_slope = insert_slope
@@ -286,7 +290,7 @@ def local_ali_phmm(seqs, sub_mat, insert_int, insert_slope, arranger=None,
     hmm.insert[:, 0, 1] = insert_int
     hmm.insert[:, 1, 1] = insert_slope
     # Deletions cannot land in insertions: insertion must be before deletion.
-    hmm.insert[:, 2, 1] = - inf
+    hmm.insert[:, 2, 1] = ninf
     
     hmm.initial_logits = torch.zeros(len_seq)
     hmm.set_logits(normalize=normalize) # scaling doesn't matter
@@ -300,15 +304,15 @@ def local_ali_phmm(seqs, sub_mat, insert_int, insert_slope, arranger=None,
     # 1) No penalty from stop to stop
     model.transition_logits[..., len_seq-1, len_seq-1] = 0
     # 2) Can't allow for stop to insertion
-    model.transition_logits[..., len_seq-1, len_seq:] = - inf
+    model.transition_logits[..., len_seq-1, len_seq:] = ninf
     # 3) Eliminate insertion after stop
     # (not technically necessary as stop letter must land on stop pos)
-    model.transition_logits[..., :, -1] = - inf
-    model.transition_logits[..., -1, :] = - inf
+    model.transition_logits[..., :, -1] = ninf
+    model.transition_logits[..., -1, :] = ninf
     if local_alignment:
         # We designate the ins before stop as the "final ins"
         # 1) No other ins can be final: no internal ins to stop
-        model.transition_logits[..., len_seq:-2, len_seq-1] = - inf
+        model.transition_logits[..., len_seq:-2, len_seq-1] = ninf
         # 2) Only slope penalty to delete to stop or final ins
         model.transition_logits[..., :len_seq-1, len_seq-1] = delete_slope * torch.flip(torch.arange(len_seq-1), dims=[0])
         model.transition_logits[..., :len_seq-1, -2] = (
@@ -319,7 +323,7 @@ def local_ali_phmm(seqs, sub_mat, insert_int, insert_slope, arranger=None,
     elif not flank_penalty:
         # We designate the ins before stop as the "final ins"
         # 1) No other ins can be final: no internal ins to stop
-        model.transition_logits[..., len_seq:-2, len_seq-1] = - inf
+        model.transition_logits[..., len_seq:-2, len_seq-1] = ninf
         # 2) No delete penalty to stop or final ins
         model.transition_logits[..., :len_seq-1, len_seq-1] = 0
         model.transition_logits[..., :len_seq-1, -2] = 0
@@ -332,7 +336,7 @@ def local_ali_phmm(seqs, sub_mat, insert_int, insert_slope, arranger=None,
         model.transition_logits[..., -2, -2] = 0
     
     # Cannot delete and land in ins: can't start on interior ins
-    model.initial_logits[..., len_seq + 1:] = - inf
+    model.initial_logits[..., len_seq + 1:] = ninf
     # Set insertion and deletion penalties
     if local_alignment:
         model.initial_logits[..., :len_seq] = delete_slope * torch.arange(len_seq) 
